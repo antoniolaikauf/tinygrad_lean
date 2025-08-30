@@ -2,7 +2,8 @@ from tinygrad import Tensor
 
 a = Tensor.empty(4, 4)
 b = Tensor.empty(4, 4)
-print((a+b).tolist())
+c = (a*b)
+print(a.sum(0).tolist())
 
 # comand python3 tutorial_tinygrad.py
 
@@ -78,3 +79,58 @@ extern "C" __global__ void __launch_bounds__(4) E_4_4(float* data0, float* data1
 '''
 
 # https://mesozoic-egg.github.io/tinygrad-notes/20241231_intro.html
+
+
+'''
+per descrivere la sua computazione in tinygrad esiste la classe UOp e il modo in cui la computazione è rappresentata è An abstract syntax tree che consiste nel rappresentare il codice in una struttura ad albero
+vedere https://en.wikipedia.org/wiki/Abstract_syntax_tree
+
+class UOp:
+  op: Ops
+  dtype: dtypes
+  src: tuple(UOp)
+  arg: None
+
+
+'''
+
+
+# questo codice scritto in questo modo è 'scrittura a basso livello per tinygrad'
+from tinygrad.uop.ops import UOp, Ops
+from tinygrad import dtypes
+from tinygrad.renderer.cstyle import CUDARenderer
+
+const = UOp(Ops.CONST, dtypes.float, arg=1.0)
+add = UOp(Ops.ADD, dtypes.float, src=(const, const), arg= None)
+print(add)
+print(CUDARenderer("sm_50").render([const, add]))
+
+'''
+la funzione render per generare codice 
+
+Now if you check out the code generation implementation, you can see how it works. The render function iterates 
+through the linearized UOp tree, and match each against the pattern specified in the PatternMatcher,
+for each match it outputs the string, and the strings were combined at the end for the final rendered code.
+
+
+tree
+
+UOp(op=STORE, src=(
+  UOp(op=DEFINE_GLOBAL),
+  UOp(op=ADD, src=(
+    UOp(op=LOAD, src=(
+      UOp(op=DEFINE_GLOBAL)
+    )),
+    UOp(op=CONST, arg=1.0)
+  ))
+)
+
+pattern
+
+patterns = [
+  (STORE, lambda uop: "="),
+  (CONST, lambda uop: f" {uop.arg} "),
+  (ADD, lambda uop: f" + "),
+]
+
+'''
