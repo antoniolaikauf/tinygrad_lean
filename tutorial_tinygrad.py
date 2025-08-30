@@ -45,4 +45,36 @@ void E_4_4(float* restrict data0_16, float* restrict data1_16, float* restrict d
 }
 '''
 
+
+'''
+kernel è una funzione in cuda marcata con  __global__ che è eseguita sulla GPU e chiamata dall'host CPU. non c'entra nulla con il kernel del sistema operativo che permette all'hardware di comunicare con il software
+sono due cose diverse anche se hanno lo stesso nome.
+
+nel codice sotto il kernel è lanciato da __launch_bounds__(4) che suggerisce l'uso di massimo 4 thread, i thread sono flussi di lavoro distinti all'interno di un singolo processo.
+se una CPU ha un core allora non ci sarà parallelismo essendo che eseguirà un singolo thread ogni volta che starà allocando risorse a quel processo.
+se invece ci sono più core allora si può fare parallelismo, con due core si possono eseguire due thread nello stesso processo essendo che i core sono come 'micro processori' con la propria cache e registri.
+su sto pc ho 2 thread e 8 core quindi nell'esecuzione dei processi utilizzerò solo due core
+
+int lidx0 = threadIdx.x; indica l'id del thread
+float4 è un componente specifico di cuda, i componenti all'interno di foat4 sono x, y, z, w
+make_float4 è un componente in cuda che permette di creare un foalt4
+
+cuda   griglia --> blocchi --> thread  
+ogni bloccco contiene la quantità di thread   
+
+in cuda i thear eseguono lo stesso kernel (funzione) ma su dati differenti tra di loro, nella funzione con CUDA si può notare che non c'è nessun ciclo for per e cambiare l'ofset e accedere alla memoria
+questo perchè quando il kernel viene eseguito vengono creati 4 thread che eseguono lo stesso kernel e in base all'id del thread che può essere 0, 1, 2, 3 l'fset cambia e i thread accedono a diverse are di memoria.
+
+
+#define INFINITY (__int_as_float(0x7f800000))
+#define NAN (__int_as_float(0x7fffffff))
+extern "C" __global__ void __launch_bounds__(4) E_4_4(float* data0, float* data1, float* data2) {
+  int lidx0 = threadIdx.x; /* 4 */ numero di thread 
+  int alu0 = (lidx0<<2);
+  float4 val0 = *((float4*)((data1+alu0)));
+  float4 val1 = *((float4*)((data2+alu0)));
+  *((float4*)((data0+alu0))) = make_float4((val0.x+val1.x),(val0.y+val1.y),(val0.z+val1.z),(val0.w+val1.w));
+}
+'''
+
 # https://mesozoic-egg.github.io/tinygrad-notes/20241231_intro.html
