@@ -90,20 +90,18 @@ class UOp:
   dtype: dtypes
   src: tuple(UOp)
   arg: None
-
-
 '''
 
 
 # questo codice scritto in questo modo è 'scrittura a basso livello per tinygrad'
 from tinygrad.uop.ops import UOp, Ops
 from tinygrad import dtypes
-from tinygrad.renderer.cstyle import CUDARenderer
+from tinygrad.renderer.cstyle import CUDARenderer, MetalRenderer
 
-const = UOp(Ops.CONST, dtypes.float, arg=1.0)
-add = UOp(Ops.ADD, dtypes.float, src=(const, const), arg= None)
-print(add)
-print(CUDARenderer("sm_50").render([const, add]))
+# const = UOp(Ops.CONST, dtypes.float, arg=1.0)
+# add = UOp(Ops.ADD, dtypes.float, src=(const, const), arg= None)
+# print(add)
+# print(CUDARenderer("sm_50").render([const, add]))
 
 '''
 la funzione render per generare codice 
@@ -134,3 +132,105 @@ patterns = [
 ]
 
 '''
+
+
+# class UOp:
+#   op: Ops
+#   dtype: dtypes
+#   src: tuple(UOp)
+#   arg: None
+
+# Metal_Renderer = MetalRenderer()
+# CUDA_Renderer = CUDARenderer('sm_50')
+# const = UOp(Ops.CONST, dtypes.float, arg=2.0) # variabile 1
+# const1 = UOp(Ops.CONST, dtypes.float, arg=4.0) # variabile 2
+# define_global = UOp(Ops.DEFINE_GLOBAL, dtypes.float.ptr(), arg=0.0) # area di memoria
+# add = UOp(Ops.ADD, dtypes.float, arg=None, src=(const1, const)) # addizione tra due variabili
+# store = UOp(Ops.STORE, dtypes.float, arg=None, src=(define_global, add)) # salvataggio della variabile nell'area di memoria
+
+# uops = [const, define_global, const1,  add, store]
+# rendered = CUDA_Renderer.render(uops)
+# print(rendered)
+# prova creazione di UOp codice 
+
+
+
+# CUDA_Renderer = CUDARenderer('sm_50')
+# const = UOp(Ops.CONST, dtypes.float, arg=2.0) # variabile 1
+# const1 = UOp(Ops.CONST, dtypes.float, arg=4.0) # variabile 2
+# define_global = UOp(Ops.DEFINE_GLOBAL, dtypes.float.ptr(), arg=0.0) # area di memoria
+# xor = UOp(Ops.SUB, dtypes.float, arg=None, src=(const1, const)) # addizione tra due variabili
+# store = UOp(Ops.STORE, dtypes.float, arg=None, src=(define_global, xor)) # salvataggio della variabile nell'area di memoria
+
+
+# uops = [const, define_global, const1,  xor, store]
+# rendered = CUDA_Renderer.render(uops)
+# print(rendered)
+
+
+# SHAPETRAKER permette di manipolare il tensore (per esempio la trasposizione) a quasi costo zero (cosi non da rallentare la computazione)
+# le matrici nella memoria non sono rappresentate come le vediamo noi, ma come un array ad unica dimensione e per accedere agli elementi corretti di questo array salvato nella 
+# memoria tinygrad usa "row * 2 + col" 
+# shape, consiste nella forma della matrice, strides consiste in quanti passi fare quando si incrementa il valore, 2 farebbe riferimento alle row e 1 alle colonne 
+# perchè per saltare da una row all'altra in una matrice di 2,2 bisogna saltare due elementi se fosse 2x3 bisognerebbe saltare 3 elementi, invece 1 fa riferimento alle colonne 
+# perchè per spostarsi da colonna a colonna si salta un elemento 
+
+'''
+[
+  0x00, 0x01
+  0x02, 0x03
+]
+
+ma in memroia viene salvato [0x00, 0x01, 0x02, 0x03]
+row * 2 + col sia row che col partono da 0 e quindi prendo il primo elemento 0x00, dopo row rimane 0 ma col va a 1 e quindi si prende, 0x01 row va a 2 e col va a 0 e si ottiene 0x02, e come ultimo row rimane a 2 e col è 1 e
+si ottiene 0x03
+'''
+
+from tinygrad.shape.view import   View
+
+a = View.create(shape=(2,2), strides=(2,1))
+
+idx, valid = a.to_indexed_uops()
+
+print(idx.render()) # questa è l'equazione usata per ottenere ogni singolo elemento dell'array nella memoria
+
+# := indica che le due costanti sono le stesse instanze   
+'''
+# UOp(Ops.ADD, dtypes.int, arg=None, src=(
+#   UOp(Ops.ADD, dtypes.int, arg=None, src=(
+#     x1:=UOp(Ops.CONST, dtypes.int, arg=0, src=()),
+#     UOp(Ops.MUL, dtypes.int, arg=None, src=(
+#       UOp(Ops.RANGE, dtypes.int, arg=0, src=(
+#          x1,
+#         UOp(Ops.CONST, dtypes.int, arg=3, src=()),)),
+#       x5:=UOp(Ops.CONST, dtypes.int, arg=2, src=()),)),)),
+
+#   UOp(Ops.MUL, dtypes.int, arg=None, src=(
+#     UOp(Ops.RANGE, dtypes.int, arg=1, src=(
+#        x1,
+#        x5,)),
+#     UOp(Ops.CONST, dtypes.int, arg=1, src=()),)),))
+
+((ridx0*2)+ridx1)
+'''
+
+# non capisco come mai ottengo 0 nei due cicli for
+
+CUDA_Renderer = CUDARenderer('sm_50')
+x1 = UOp(Ops.CONST, dtypes.int, arg=0) 
+x5 = UOp(Ops.CONST, dtypes.int, arg=2) 
+x3 = UOp(Ops.CONST, dtypes.int, arg=3)
+
+range1 = UOp(Ops.RANGE, dtypes.int, arg=(0,False), src=(x3,))
+mul1 = UOp(Ops.MUL, dtypes.int, arg=None, src=(range1, x5))
+add1 = UOp(Ops.ADD, dtypes.int, arg=None, src=(x1, mul1))
+
+range = UOp(Ops.RANGE, dtypes.int, arg=(1,False), src=(x5,))
+const1 = UOp(Ops.CONST, dtypes.int, arg=1) 
+mul = UOp(Ops.MUL, dtypes.int, arg=None, src=(range, const1))
+
+add = UOp(Ops.ADD, dtypes.int, arg=None, src=(add1, mul))
+
+uops = [x1, x5, x3, range1, mul1, add1, range, const1, mul, add]
+rendered = CUDA_Renderer.render(uops)
+print(rendered)
