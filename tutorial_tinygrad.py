@@ -192,7 +192,7 @@ a = View.create(shape=(2,2), strides=(2,1))
 
 idx, valid = a.to_indexed_uops()
 
-print(idx.render()) # questa è l'equazione usata per ottenere ogni singolo elemento dell'array nella memoria
+print( idx.render()) # questa è l'equazione usata per ottenere ogni singolo elemento dell'array nella memoria
 
 # := indica che le due costanti sono le stesse instanze   
 '''
@@ -214,18 +214,17 @@ print(idx.render()) # questa è l'equazione usata per ottenere ogni singolo elem
 ((ridx0*2)+ridx1)
 '''
 
-# non capisco come mai ottengo 0 nei due cicli for
 
 CUDA_Renderer = CUDARenderer('sm_50')
 x1 = UOp(Ops.CONST, dtypes.int, arg=0) 
 x5 = UOp(Ops.CONST, dtypes.int, arg=2) 
 x3 = UOp(Ops.CONST, dtypes.int, arg=3)
 
-range1 = UOp(Ops.RANGE, dtypes.int, arg=(0,False), src=(x3,))
+range1 = UOp(Ops.RANGE, dtypes.int, arg=(0,False), src=(x5,))
 mul1 = UOp(Ops.MUL, dtypes.int, arg=None, src=(range1, x5))
 add1 = UOp(Ops.ADD, dtypes.int, arg=None, src=(x1, mul1))
 
-range = UOp(Ops.RANGE, dtypes.int, arg=(1,False), src=(x5,))
+range = UOp(Ops.RANGE, dtypes.int, arg=(1,False), src=(x3,))
 const1 = UOp(Ops.CONST, dtypes.int, arg=1) 
 mul = UOp(Ops.MUL, dtypes.int, arg=None, src=(range, const1))
 
@@ -234,3 +233,35 @@ add = UOp(Ops.ADD, dtypes.int, arg=None, src=(add1, mul))
 uops = [x1, x5, x3, range1, mul1, add1, range, const1, mul, add]
 rendered = CUDA_Renderer.render(uops)
 print(rendered)
+
+
+a = View.create(shape=(3,2), strides=(2,1))
+# quando si esegue una permute in tinygrad, l'array salvato nella memoria non cambia cosa che negli altri framework si 
+# questo permette di essere più efficciente e risparmiare memoria 
+'''
+es 
+[
+  0x00, 0x01
+  0x02, 0x03
+  0x04, 0x05
+]
+
+new
+
+[
+  0x00, 0x02, 0x04
+  0x01, 0x03, 0x05
+]
+
+e nella memoria si dovrebbe vedrebbe [0x00, 0x02, 0x04, 0x01, 0x03, 0x05] quindi non è contiguos (N.B i valori sarebbero address di memoria e non elementi)
+ma in verità si vede ancora [0x00, 0x01, 0x02, 0x03, 0x04, 0x05], quando si modificano tensor si crea una view  all'interno di ShapeTracker  che è il componente responsabile di tracciare shape, strides e offset. 
+Questa vista descrive un nuovo modo di interpretare e accedere ai dati esistenti, senza alcuna copia che cambia gli indici di accesso e non cambia la memoria sottostante 
+'''
+
+a.permute((1,0))
+print(a.shape)
+print(a.strides)
+
+a.reshape((3,2))
+print(a)
+
