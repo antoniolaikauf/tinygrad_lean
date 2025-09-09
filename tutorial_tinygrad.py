@@ -63,7 +63,7 @@ make_float4 è un componente in cuda che permette di creare un foalt4
 cuda   griglia --> blocchi --> thread  
 ogni bloccco contiene la quantità di thread   
 
-in cuda i thear eseguono lo stesso kernel (funzione) ma su dati differenti tra di loro, nella funzione con CUDA si può notare che non c'è nessun ciclo for per e cambiare l'ofset e accedere alla memoria
+in cuda i thead eseguono lo stesso kernel (funzione) ma su dati differenti tra di loro, nella funzione con CUDA si può notare che non c'è nessun ciclo for per e cambiare l'ofset e accedere alla memoria
 questo perchè quando il kernel viene eseguito vengono creati 4 thread che eseguono lo stesso kernel e in base all'id del thread che può essere 0, 1, 2, 3 l'fset cambia e i thread accedono a diverse are di memoria.
 
 
@@ -192,7 +192,7 @@ a = View.create(shape=(2,2), strides=(2,1))
 
 idx, valid = a.to_indexed_uops()
 
-print( idx.render()) # questa è l'equazione usata per ottenere ogni singolo elemento dell'array nella memoria
+print(idx.render()) # questa è l'equazione usata per ottenere ogni singolo elemento dell'array nella memoria
 
 # := indica che le due costanti sono le stesse instanze   
 '''
@@ -224,13 +224,13 @@ range1 = UOp(Ops.RANGE, dtypes.int, arg=(0,False), src=(x5,))
 mul1 = UOp(Ops.MUL, dtypes.int, arg=None, src=(range1, x5))
 add1 = UOp(Ops.ADD, dtypes.int, arg=None, src=(x1, mul1))
 
-range = UOp(Ops.RANGE, dtypes.int, arg=(1,False), src=(x3,))
+range2 = UOp(Ops.RANGE, dtypes.int, arg=(1,False), src=(x3,))
 const1 = UOp(Ops.CONST, dtypes.int, arg=1) 
-mul = UOp(Ops.MUL, dtypes.int, arg=None, src=(range, const1))
+mul = UOp(Ops.MUL, dtypes.int, arg=None, src=(range2, const1))
 
 add = UOp(Ops.ADD, dtypes.int, arg=None, src=(add1, mul))
 
-uops = [x1, x5, x3, range1, mul1, add1, range, const1, mul, add]
+uops = [x1, x5, x3, range1, mul1, add1, range2, const1, mul, add]
 rendered = CUDA_Renderer.render(uops)
 print(rendered)
 
@@ -265,3 +265,169 @@ print(a.strides)
 a.reshape((3,2))
 print(a)
 
+
+
+'''
+in tinygrad qualsiasi operazioni con i tensor sono elementwise, o riduzione  cosi da avere un vantaggio 
+di solito elementwise consiste in una operazione che non cambia il numero di elementi, invece una riduzione significa una 
+riduzione di elementi lungo un asse 
+'''
+
+a = Tensor.empty(2,4)
+b = Tensor.empty(4,3)
+print(a.shape)
+print(b.shape)
+
+# print((a@b).tolist())
+
+
+'''
+convolution
+'''
+
+e = Tensor([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]).reshape((1,1,4,4))
+print(e.numpy())
+
+weight = Tensor.ones((1, 1, 3, 3))
+out = e.conv2d(weight)
+print(out.numpy())
+
+# per vedere il tensor muoversi sugli assi c'è un metodo chiamato _pool
+# k_ si riferisce alla dimensione della maschera e stride fa riferimento a quanti elementi saltare
+# dilation fa riferimento a quanti elementi prendere metre salta gli elementi in mezzo 
+
+
+"""
+a = Tensor([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]).reshape((1,1,4,4))
+
+[[[[ 0  1  2  3]
+   [ 4  5  6  7]
+   [ 8  9 10 11]
+   [12 13 14 15]]]]
+
+
+pooled = a._pool(k_=(2, 2), stride=1, dilation=2)
+
+
+
+[[[[[[ 0  2]
+     [ 8 10]]
+
+    [[ 1  3]
+     [ 9 11]]]
+
+
+   [[[ 4  6]
+     [12 14]]
+
+    [[ 5  7]
+     [13 15]]]]]]
+"""
+
+pooled = e._pool(k_=(3, 3), stride=1, dilation=1)
+print(pooled.numpy())
+
+
+'''
+
+JIT
+
+compilare il codice per la GPU richiede due passaggi:
+primo è quello di compilare il kernel source code in byte code e questo avviene tramite il processo di rendering e viene generato un tree di UOp
+
+extern "C" __global__ void __launch_bounds__(1) E_16(float* data0, float* data1, float* data2) {
+  int gidx0 = blockIdx.x; /* 16 */
+  float val0 = *(data1+gidx0);
+  float val1 = *(data2+gidx0);
+  *(data0+gidx0) = (val0+val1);
+}
+
+dopo aver fatto il rendering il codice sorgente viene compilato in byte code 
+per la parte di compilazione viene il codice viene salvato tramite un metodo di cache, ogni kernel viene salvato con un proprio ckey
+e se si ha gia generato ckey allora si ottiene il kernel se no si renderizza e si salva nella cache
+
+
+tinyJIT sarebbe un involucro che serve per salvare i comnadi utilizzati dalla GPU cosi che si evita di ricreare il grafo di computazione e i comandi associati (vedi link https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g50d871e3bd06c1b835e52f2966ef366b)
+in tinygrad quando un tensore viene 'realizzato' genera una sequenza di comandi specifici per le API che consistono in funzioni del venditore della GPU come caricare il codice compilato nella
+memoria della GPU, trigger di esecuzione, senza JIT ogni chiamata ricrea questi comandi da zero  
+'''
+
+
+print("---------------------------------------------------\n\n\n")
+from tinygrad import TinyJit
+import time
+
+weight = Tensor.empty(4, 4)
+
+@TinyJit
+def forward(x: Tensor):
+    c = (x * weight).contiguous()
+    c.sum(0).realize()
+
+
+for i in range(4):
+    start = time.time()
+    x = Tensor.empty(4, 4)
+    forward(x)
+    end = time.time()
+    print(f"Iteration {i} took {(end - start)*1000:.2f}ms")
+
+
+
+'''
+si nota che ci sono due kernel questo perchè lo scheduler di tinygrad non fusione tutte le due operazioni che si stanno facendo     c = (x * weight).contiguous()   c.sum(0).realize()
+prima si fa  quella della creazione di c e dopo quella di sum
+
+scheduled 2 kernels in 1.60 ms
+*** CPU        7 E_4_4n2                                      arg  3 mem  0.00 GB tm     15.02us/     0.30ms (     0.00 GFLOPS    0.0|0.0     GB/s) ['contiguous', '__mul__', 'empty']
+*** CPU        8 r_4_4n1                                      arg  2 mem  0.00 GB tm      9.65us/     0.31ms (     0.00 GFLOPS    0.0|0.0     GB/s) 
+Iteration 0 took 9.08ms
+scheduled 2 kernels in 1.85 ms
+*** CPU        9 E_4_4n2                                      arg  3 mem  0.00 GB tm     24.57us/     0.34ms (     0.00 GFLOPS    0.0|0.0     GB/s) ['contiguous', '__mul__', 'empty']
+*** CPU       10 r_4_4n1                                      arg  2 mem  0.00 GB tm      9.61us/     0.35ms (     0.00 GFLOPS    0.0|0.0     GB/s)
+Iteration 1 took 3.22ms
+scheduled 2 kernels in 2.88 ms
+*** CPU       11 E_4_4n2                                      arg  3 mem  0.00 GB tm     22.22us/     0.37ms (     0.00 GFLOPS    0.0|0.0     GB/s) ['contiguous', '__mul__', 'empty']
+*** CPU       12 r_4_4n1                                      arg  2 mem  0.00 GB tm     12.67us/     0.38ms (     0.00 GFLOPS    0.0|0.0     GB/s)
+Iteration 2 took 5.31ms
+scheduled 2 kernels in 1.97 ms
+*** CPU       13 E_4_4n2                                      arg  3 mem  0.00 GB tm     12.86us/     0.40ms (     0.00 GFLOPS    0.0|0.0     GB/s) ['contiguous', '__mul__', 'empty']
+*** CPU       14 r_4_4n1                                      arg  2 mem  0.00 GB tm      9.20us/     0.40ms (     0.00 GFLOPS    0.0|0.0     GB/s)
+Iteration 3 took 3.34ms
+
+si può notare che in ogni iterazione del ciclo vengono eseguiti due kernel, nella prima iterazione il codice viene generato e fatto in bytecode, il metodo di cache lo vedra per la prima volta e 
+quindi lo salverà, all'interno della cache, nelle altre iterazioni in poi il codice verrà preso dalla cache e non generato ogni volta, ma le istruzioni dal grafo le creerà ogni volta 
+'''
+
+
+'''
+con tinyJIT
+
+scheduled 2 kernels in 1.67 ms
+*** CPU        7 E_4_4n2                                      arg  3 mem  0.00 GB tm     19.47us/     0.23ms (     0.00 GFLOPS    0.0|0.0     GB/s) ['contiguous', '__mul__', 'empty']
+*** CPU        8 r_4_4n1                                      arg  2 mem  0.00 GB tm     10.86us/     0.24ms (     0.00 GFLOPS    0.0|0.0     GB/s)
+Iteration 0 took 11.97ms
+scheduled 2 kernels in 1.66 ms
+*** CPU        9 E_4_4n2                                      arg  3 mem  0.00 GB tm     26.88us/     0.27ms (     0.00 GFLOPS    0.0|0.0     GB/s) ['contiguous', '__mul__', 'empty']
+*** CPU       10 r_4_4n1                                      arg  2 mem  0.00 GB tm      9.20us/     0.27ms (     0.00 GFLOPS    0.0|0.0     GB/s)
+JIT captured 2 kernels with 0 inputs
+Iteration 1 took 3.41ms
+JIT GRAPHing batch with 2 kernels on device <tinygrad.runtime.ops_cpu.CPUDevice object at 0x7c331c98fa60>
+*** CPU       11 <batched 2>                                  arg  0 mem  0.00 GB tm     92.61us/     0.37ms (     0.00 GFLOPS    0.0|0.0     GB/s)
+Iteration 2 took 1.61ms
+*** CPU       12 <batched 2>                                  arg  0 mem  0.00 GB tm     86.53us/     0.45ms (     0.00 GFLOPS    0.0|0.0     GB/s)
+Iteration 3 took 0.73ms
+
+
+si può vedere che durante la compilazione del codice c'è voluto di più (11.97ms), questo perchè deve essere creato il bytecode e dopo la pipiline/grafo
+neella seconda iterazione si salta il bytecode ma si ripete lo stesso la pipeline/grafo, ma sta volta tinyJIT cattura il pipeline/grafo quindi i comandi API/i kernel
+
+
+JIT captured 2 kernels with 0 inputs
+Iteration 1 took 3.41ms
+JIT GRAPHing batch with 2 kernels on device <tinygrad.runtime.ops_cpu.CPUDevice object at 0x7c331c98fa60>
+*** CPU       11 <batched 2>                                  arg  0 mem  0.00 GB tm     92.61us/     0.37ms (     0.00 GFLOPS    0.0|0.0     GB/s)
+qua il <batched 2> indica i due kernel che venivano fatti nella prima e seconda iterwazione
+
+ma dalla iterazione due e tre la velocità aumenta di molto
+'''
