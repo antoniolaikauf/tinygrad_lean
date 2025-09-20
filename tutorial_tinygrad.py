@@ -64,7 +64,7 @@ cuda   griglia --> blocchi --> thread
 ogni bloccco contiene la quantità di thread   
 
 in cuda i thead eseguono lo stesso kernel (funzione) ma su dati differenti tra di loro, nella funzione con CUDA si può notare che non c'è nessun ciclo for per e cambiare l'ofset e accedere alla memoria
-questo perchè quando il kernel viene eseguito vengono creati 4 thread che eseguono lo stesso kernel e in base all'id del thread che può essere 0, 1, 2, 3 l'fset cambia e i thread accedono a diverse are di memoria.
+questo perchè quando il kernel viene eseguito vengono creati 4 thread che eseguono lo stesso kernel e in base all'id del thread che può essere 0, 1, 2, 3 l'ofset cambia e i thread accedono a diverse are di memoria.
 
 
 #define INFINITY (__int_as_float(0x7f800000))
@@ -430,4 +430,67 @@ JIT GRAPHing batch with 2 kernels on device <tinygrad.runtime.ops_cpu.CPUDevice 
 qua il <batched 2> indica i due kernel che venivano fatti nella prima e seconda iterwazione
 
 ma dalla iterazione due e tre la velocità aumenta di molto
+
+non si possono avere due jit nested, nell'esempio di prima si fa il JIT sul forward  se si facesse anche il JIT sul training loop darebbe errore
+
+in tinygrad se si usasse una variabile come appoggio es. una variabile che viene usata per scambiare il contenuto di due variabili 
+temp = a
+a = b
+b = temp
+
+la memoria della variabile temporanea non verrebbe salvata ogni volta nel forward
+ma se si usasse tinyJIT invece si salverebbe costantemente, senza ogni volta allocare la memoria ad ogni chiamata della funzione 
+'''
+
+
+import math
+
+@TinyJit
+def replace_if_zero(tokens: Tensor):
+  tokens = (tokens == 0).where(-math.inf, tokens).contiguous()
+  _ = (tokens == 0).all()
+  return tokens, _ 
+
+ctx = Tensor([
+  [0, 0]
+])
+
+_a = [
+    [1, 7],
+    [2, 0],
+    [3, 2],
+    [4, 0],
+]
+
+for i in range(0, len(_a)):
+  a = Tensor(_a[i]).reshape((1, -1))
+  a, _ = replace_if_zero(a)
+  print('qua', _.numpy())
+  ctx = ctx.cat(a, dim=0)
+
+print(ctx.numpy())
+
+
+
+k = Tensor.empty(4)
+k = k.sum(0)
+print(k.numpy())
+
+'''
+features VIZ permette di vedere tutte i kernel e istruzioni in una pagina web
+
+a destra della pagina ti darà il codice renderizzato e a sinistra i kernel 
+in centro si trova un AST albero sintattico astratto che rappresenta la struttura di un albero del codice sorgente 
+SINK signifca che la computazione è finita 
+STORE significa che il risultato della computazione viene salvato, per salvar eun risultato abbiamo bisogno di 3 componenti dove salvarlo, cosa salvare e come salvarlo 
+DEFINE_GLOBAL con argomento 0 significa il DOVE e nel nostro codice sarebbe float* restrict data0_1
+il VIEW sarebbe il come che nel codice sarebbe *(data0_1+0)
+il come sarebbe quello che viene dopo il segno '=' e in VIZ sarebbe REDUCE_AXIS che ha un argomento 0 questo perchè stiamo facendo la somma sull asse 0
+dopo ha il op ADD questo perchè stiamo facendo la somma
+e l'input da prendere è preso da DEFINE_GLOBAL con valore 1
+
+
+nella parte a destra in alto c'è la chiamata della funzione per il grafo
+return graph_rewrite(sink, self.pm, ctx=self.ctx(sink) if self.ctx is not None else None, name=self.name, bottom_up=self.bottom_up)
+subito sotto abbiamo il testo del codice quando viene realizzato 
 '''
