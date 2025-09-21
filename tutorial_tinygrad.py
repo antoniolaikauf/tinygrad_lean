@@ -494,3 +494,34 @@ nella parte a destra in alto c'è la chiamata della funzione per il grafo
 return graph_rewrite(sink, self.pm, ctx=self.ctx(sink) if self.ctx is not None else None, name=self.name, bottom_up=self.bottom_up)
 subito sotto abbiamo il testo del codice quando viene realizzato 
 '''
+
+'''
+ci sono vari metodi e implementazioni per fare operazioni su matrici in tinygrad e quando un kernel è generato
+tinygrad genera il kernel e misura le sue performance sul device desiderato
+si generano diverso kernel e dopo si sceglie quello più veloce perchè ci sono vari fattori da considerare per esempio l'architettura della GPU, i tipi di dati o anche la grandezza 
+dell'input su cui fare le operazioni
+
+ci possono essere vare operazioni di ottimizzazione 
+UNROLL --> unroll_opt = Opt(OptOps.UNROLL, 0, 4) 0 sarebbe l'asse della matrice e 4 sarebbe quanti elementi 
+UPCAST --> opt = Opt(OptOps.UPCAST, 0, 8) 0 sarebbe l'asse e 8 sarebbero gli elementi 
+PADTO
+GROUPTOP
+GROUP
+
+
+actions = [Opt(op=OptOps.UPCAST, axis=axis, amt=amt) for amt in [0,2,3,4,5,7] for axis in range(6)]
+actions += [Opt(op=OptOps.UNROLL, axis=axis, amt=amt) for amt in [0,4,7] for axis in range(5)]
+actions += [Opt(op=OptOps.LOCAL, axis=axis, amt=amt) for amt in [2,3,4,8,13,16,29] for axis in range(6)]
+actions += [Opt(op=OptOps.GROUPTOP, axis=axis, amt=amt) for amt in [13,16,28,29,32,49,64,256] for axis in range(3)]
+actions += [Opt(op=OptOps.GROUP, axis=axis, amt=amt) for amt in [0,4,8,16] for axis in range(3)]
+
+CUDA per evitare di avere delle race condition che sarebbero dei comportamenti non corretti dei thred
+es 
+A thread vuole leggere una variabile 
+B thread scrive quella variabile 
+se B non ha finito di scrivere quella variabile allora si ha una race condition 
+CUDA per evitare questo ha una bariera chiamata __syncthreads()
+
+'''
+
+
